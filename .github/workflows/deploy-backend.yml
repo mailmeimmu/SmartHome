@@ -74,12 +74,16 @@ jobs:
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          cd server
+          LOCAL_SOURCE="server"
+          if [ ! -d "$LOCAL_SOURCE" ]; then
+            echo "Directory '$LOCAL_SOURCE' not found; syncing repository root instead."
+            LOCAL_SOURCE="."
+          fi
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+            "${LOCAL_SOURCE}/" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
 
       - name: Install deps, migrate, reload
