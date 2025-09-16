@@ -48,18 +48,26 @@ All endpoints live under the server base URL (e.g. `http://YOUR_SERVER:8080`). J
 ### Sensor Readings (Lights, Fans, AC, etc.)
 Use one logical `deviceId` per physical device and send metrics (state, power usage, temperature, etc.). Suggested IDs for the 12 devices the engineer team manages:
 
-| Device                | Suggested `deviceId` | Example metrics |
-| --------------------- | -------------------- | --------------- |
-| Light 1 – Light 4     | `light-1` … `light-4`| `power` (0/1), `watt` |
-| Fan 1 – Fan 4         | `fan-1` … `fan-4`    | `speed` (1–5), `power` |
-| AC 1 – AC 4           | `ac-1` … `ac-4`      | `temperature`, `mode`, `power` |
+| Area / Device         | `deviceId`            | Notes |
+| --------------------- | --------------------- | ----- |
+| Main Hall Light A     | `mainhall-light-1`    | `power` (0/1) |
+| Main Hall Light B     | `mainhall-light-2`    | `power` (0/1) |
+| Main Hall Fan         | `mainhall-fan-1`      | `power` (0/1) |
+| Main Hall AC          | `mainhall-ac-1`       | `power` (0/1) |
+| Bedroom 1 Light       | `bedroom1-light-1`    | `power` (0/1) |
+| Bedroom 1 Fan         | `bedroom1-fan-1`      | `power` (0/1) |
+| Bedroom 1 AC          | `bedroom1-ac-1`       | `power` (0/1) |
+| Bedroom 2 Light       | `bedroom2-light-1`    | `power` (0/1) |
+| Bedroom 2 Fan         | `bedroom2-fan-1`      | `power` (0/1) |
+| Bedroom 2 AC          | `bedroom2-ac-1`       | `power` (0/1) |
+| Kitchen Light         | `kitchen-light-1`     | `power` (0/1) |
 
 Sample payloads for each device type (replace `deviceId` and values as needed). All of these can also be sent through the simplified `/api/devices/:deviceId/state` endpoint using just `value` for on/off signals.
 
-- Light on/off event
+- Main Hall - Light A
   ```json
   {
-    "deviceId": "light-1",
+    "deviceId": "mainhall-light-1",
     "metric": "power",
     "value": 1,
     "unit": "state",
@@ -67,10 +75,10 @@ Sample payloads for each device type (replace `deviceId` and values as needed). 
   }
   ```
 
-- Light energy usage snapshot
+- Bedroom 1 - Light
   ```json
   {
-    "deviceId": "light-2",
+    "deviceId": "bedroom1-light-1",
     "metric": "watt",
     "value": 18.4,
     "unit": "W",
@@ -78,10 +86,10 @@ Sample payloads for each device type (replace `deviceId` and values as needed). 
   }
   ```
 
-- Fan speed change
+- Bedroom 2 - Fan
   ```json
   {
-    "deviceId": "fan-3",
+    "deviceId": "bedroom2-fan-1",
     "metric": "speed",
     "value": 4,
     "unit": "level",
@@ -89,10 +97,10 @@ Sample payloads for each device type (replace `deviceId` and values as needed). 
   }
   ```
 
-- Fan power state
+- Main Hall - Fan
   ```json
   {
-    "deviceId": "fan-4",
+    "deviceId": "mainhall-fan-1",
     "metric": "power",
     "value": 0,
     "unit": "state",
@@ -100,10 +108,10 @@ Sample payloads for each device type (replace `deviceId` and values as needed). 
   }
   ```
 
-- AC temperature reading
+- Bedroom 1 - AC temperature reading
   ```json
   {
-    "deviceId": "ac-1",
+    "deviceId": "bedroom1-ac-1",
     "metric": "temperature",
     "value": 22.5,
     "unit": "C",
@@ -111,10 +119,10 @@ Sample payloads for each device type (replace `deviceId` and values as needed). 
   }
   ```
 
-- AC operating mode change (use numeric codes that map to your firmware)
+- Bedroom 2 - AC operating mode change (use numeric codes that map to your firmware)
   ```json
   {
-    "deviceId": "ac-2",
+    "deviceId": "bedroom2-ac-1",
     "metric": "mode",
     "value": 2,
     "unit": "enum",
@@ -122,10 +130,10 @@ Sample payloads for each device type (replace `deviceId` and values as needed). 
   }
   ```
 
-- AC power consumption snapshot
+- Main Hall - AC power snapshot
   ```json
   {
-    "deviceId": "ac-3",
+    "deviceId": "mainhall-ac-1",
     "metric": "power",
     "value": 1450,
     "unit": "W",
@@ -146,8 +154,11 @@ Body (no headers beyond JSON required):
 
 Response:
 ```json
-{ "deviceId": "light-1", "value": 1 }
+{ "deviceId": "mainhall-light-1", "value": 1 }
 ```
+
+- `GET /api/devices/state` – fetch the latest on/off state for every device.
+- `GET /api/devices/state?ids=mainhall-light-1,bedroom1-fan-1` – limit the response to selected device IDs.
 
 #### Ingest data from hardware (full sensor endpoint)
 `POST /api/sensors/:deviceId/readings`
@@ -182,7 +193,7 @@ Query parameters:
 Response snippet:
 ```json
 {
-  "deviceId": "light-1",
+  "deviceId": "mainhall-light-1",
   "metric": "power",
   "count": 3,
   "readings": [

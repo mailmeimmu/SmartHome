@@ -384,6 +384,48 @@ app.post('/api/devices/:deviceId/state', async (req, res) => {
   }
 });
 
+app.get('/api/devices/state', async (req, res) => {
+  const idsParam = req.query.ids;
+  let ids;
+  if (typeof idsParam === 'string') {
+    ids = idsParam.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  let sql =
+    `SELECT device_id, value, recorded_at FROM (
+      SELECT sr.*, ROW_NUMBER() OVER (PARTITION BY device_id, metric ORDER BY recorded_at DESC, id DESC) AS rn
+      FROM sensor_readings sr
+      WHERE metric = ?
+    ) ranked
+    WHERE rn = 1`;
+  const params = [DEFAULT_SENSOR_METRIC];
+  if (ids && ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    sql += ` AND device_id IN (${placeholders})`;
+    params.push(...ids);
+  }
+  sql += ' ORDER BY device_id';
+  try {
+    const [rows] = await pool.query(sql, params);
+    const states = {};
+    for (const row of rows) {
+      states[row.device_id] = {
+        value: Number(row.value) ? 1 : 0,
+        recordedAt: row.recorded_at instanceof Date ? row.recorded_at.toISOString() : row.recorded_at,
+      };
+    }
+    if (ids && ids.length) {
+      for (const id of ids) {
+        if (states[id] === undefined) {
+          states[id] = { value: 0, recordedAt: null };
+        }
+      }
+    }
+    res.json({ states });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'device states query failed' });
+  }
+});
+
 app.get('/api/devices/:deviceId/state', async (req, res) => {
   const deviceId = (req.params.deviceId || '').trim();
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
