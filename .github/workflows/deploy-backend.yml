@@ -70,11 +70,11 @@ jobs:
 
       - name: Sync backend files
         shell: bash
-        working-directory: server
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          cd server
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
