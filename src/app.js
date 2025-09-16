@@ -281,6 +281,19 @@ async function insertSensorReading({ deviceId, metric, value, unit, metadata, re
   };
 }
 
+async function ensureDeviceStateRow(deviceId) {
+  const [[row]] = await pool.query(
+    'SELECT id FROM sensor_readings WHERE device_id=? AND metric=? ORDER BY recorded_at DESC, id DESC LIMIT 1',
+    [deviceId, DEFAULT_SENSOR_METRIC]
+  );
+  if (row) return;
+  try {
+    await insertSensorReading({ deviceId, metric: DEFAULT_SENSOR_METRIC, value: 0, unit: null, metadata: null, recordedAt: new Date() });
+  } catch (e) {
+    console.warn('[device-state] ensure default failed for', deviceId, e?.message || e);
+  }
+}
+
 // Ingest a sensor reading from a hardware device
 app.post('/api/sensors/:deviceId/readings', async (req, res) => {
   if (!checkSensorSecret(req, res)) return;
@@ -414,10 +427,13 @@ app.get('/api/devices/state', async (req, res) => {
       };
     }
     if (ids && ids.length) {
-      for (const id of ids) {
-        if (states[id] === undefined) {
-          states[id] = { value: 0, recordedAt: null };
-        }
+      const missing = ids.filter((id) => states[id] === undefined);
+      for (const id of missing) {
+        await ensureDeviceStateRow(id);
+        states[id] = {
+          value: 0,
+          recordedAt: new Date().toISOString(),
+        };
       }
     }
     res.json({ states });
@@ -434,7 +450,10 @@ app.get('/api/devices/:deviceId/state', async (req, res) => {
       'SELECT value FROM sensor_readings WHERE device_id=? AND metric=? ORDER BY recorded_at DESC, id DESC LIMIT 1',
       [deviceId, DEFAULT_SENSOR_METRIC]
     );
-    if (!row) return res.status(404).json({ error: 'no state found' });
+    if (!row) {
+      await ensureDeviceStateRow(deviceId);
+      return res.json({ deviceId, value: 0 });
+    }
     res.json({ deviceId, value: Number(row.value) ? 1 : 0 });
   } catch (e) {
     res.status(500).json({ error: e.message || 'device state query failed' });
