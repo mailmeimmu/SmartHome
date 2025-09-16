@@ -93,16 +93,17 @@ app.post('/api/register', async (req, res) => {
     for (const r of ftRows) {
       if (matchTemplates(template, r.template)) {
         await conn.rollback();
-        return res.status(409).json({ error: 'Face already registered', user: { id: r.user_id, name: r.user_name } });
+        return res.status(409).json({ error: 'Face already registered', user: { id: r.user_id, name: r.user_name, faceId: r.face_id } });
       }
     }
     // Insert user
     const [ur] = await conn.query('INSERT INTO users (name, email, role, relation, pin, preferred_login) VALUES (?,?,?,?,?,?)', [name, email || null, role, relation, pin || null, preferred_login]);
     const userId = ur.insertId;
     // Insert template
-    await conn.query('INSERT INTO face_templates (user_id, face_id, template) VALUES (?,?,?)', [userId, faceId || hashString(template).slice(0, 16), template]);
+    const storedFaceId = faceId || hashString(template).slice(0, 16);
+    await conn.query('INSERT INTO face_templates (user_id, face_id, template) VALUES (?,?,?)', [userId, storedFaceId, template]);
     await conn.commit();
-    res.json({ success: true, user: { id: userId, name, email, role, relation } });
+    res.json({ success: true, user: { id: userId, name, email, role, relation, faceId: storedFaceId } });
   } catch (e) {
     await conn.rollback();
     res.status(500).json({ error: e.message || 'register failed' });
@@ -116,10 +117,10 @@ app.post('/api/auth/face', async (req, res) => {
   const { template } = req.body || {};
   if (!template) return res.status(400).json({ error: 'template required' });
   try {
-    const [rows] = await pool.query('SELECT u.*, ft.template as tpl FROM users u JOIN face_templates ft ON ft.user_id=u.id');
+    const [rows] = await pool.query('SELECT u.*, ft.template as tpl, ft.face_id FROM users u JOIN face_templates ft ON ft.user_id=u.id');
     for (const r of rows) {
       if (matchTemplates(template, r.tpl)) {
-        return res.json({ success: true, user: { id: r.id, name: r.name, email: r.email, role: r.role, relation: r.relation } });
+        return res.json({ success: true, user: { id: r.id, name: r.name, email: r.email, role: r.role, relation: r.relation, faceId: r.face_id } });
       }
     }
     res.status(404).json({ success: false, error: 'Face not recognized' });
