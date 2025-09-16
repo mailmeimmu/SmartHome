@@ -40,7 +40,6 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      # Use a user-owned directory (no sudo)
       - name: Ensure target directory exists
         shell: bash
         run: |
@@ -56,10 +55,10 @@ jobs:
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          # Write the provided env content to the remote .env
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > \"$DEPLOY_PATH/.env\"" <<'ENVEOF'
+
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > \"$DEPLOY_PATH/.env\" <<'EOF'
 ${{ secrets.DEPLOY_ENV_FILE }}
-ENVEOF
+EOF"
 
       - name: Sync backend files
         shell: bash
@@ -90,7 +89,7 @@ ENVEOF
             # Install production deps
             npm ci --omit=dev
 
-            # Run migrations
+            # Run migrations if exists
             if [ -f scripts/migrate.js ]; then
               node scripts/migrate.js
             fi
