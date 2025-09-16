@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '*'
+      - 'server/**'
       - '.github/workflows/deploy-backend.yml'
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/smarthome/server/
+            server/ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/smarthome/server/
 
       - name: Install & migrate
         run: |
