@@ -11,7 +11,7 @@ Express + MySQL service that powers the Expo app: face/PIN auth, member policies
    ```bash
    cd server
    cp .env.example .env
-   # edit .env with MySQL credentials, PORT, SENSOR_SHARED_SECRET (optional)
+   # edit .env with MySQL credentials plus optional SENSOR_SHARED_SECRET/SUPER_ADMIN vars
    ```
 2. **Install dependencies & create tables**
    ```bash
@@ -38,6 +38,10 @@ All endpoints live under the server base URL (e.g. `http://YOUR_SERVER:8080`). J
 - `POST /api/members` – add family member without biometric enrollment.
 - `PATCH /api/members/:id` – update member profile or policy JSON.
 - `DELETE /api/members/:id` – delete a member.
+
+### Super Admin
+- Set `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, and `SUPER_ADMIN_PIN` in `.env` to bootstrap a super admin account (created or updated on boot).
+- `POST /api/admin/login` – `{ email, pin }` → `{ success, user }`; used by the super admin screen to access user management tools.
 
 ### Door Control
 - `GET /api/door` – returns door lock states `{ "main": true, ... }` (`true` = locked).

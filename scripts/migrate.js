@@ -22,6 +22,10 @@ async function main() {
   console.log('Applying schema...');
   await conn.query(sql);
   console.log('Schema applied.');
+
+  console.log('Ensuring role enum includes admin...');
+  await conn.query("ALTER TABLE users MODIFY COLUMN role ENUM('admin','parent','member') NOT NULL DEFAULT 'member'");
+  console.log('Role enum ensured.');
   await conn.end();
 }
 
@@ -29,4 +33,3 @@ main().catch((e) => {
   console.error('Migration failed:', e.message || e);
   process.exit(1);
 });
-

@@ -7,6 +7,9 @@ const app = express();
 const port = Number(process.env.PORT || 8080);
 const sensorSecret = process.env.SENSOR_SHARED_SECRET || process.env.SENSORS_SHARED_SECRET || '';
 const DEFAULT_SENSOR_METRIC = 'power';
+const superAdminName = process.env.SUPER_ADMIN_NAME || 'Super Admin';
+const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || '';
+const superAdminPin = process.env.SUPER_ADMIN_PIN || '';
 
 app.use(bodyParser.json({ limit: '1mb' }));
 
@@ -41,17 +44,41 @@ function matchTemplates(a, b) {
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 function defaultPolicies(role) {
+  const isAdmin = role === 'admin';
   const base = {
-    controls: { devices: true, doors: true, unlockDoors: role === 'parent', voice: true, power: true },
+    controls: { devices: true, doors: true, unlockDoors: role === 'parent' || isAdmin, voice: true, power: true },
     areas: {
-      hall: { light: role === 'parent', ac: role === 'parent', door: role === 'parent' },
-      kitchen: { light: role === 'parent', ac: role === 'parent', door: role === 'parent' },
-      bedroom: { light: role === 'parent', ac: role === 'parent', door: role === 'parent' },
-      bathroom: { light: role === 'parent', ac: role === 'parent', door: role === 'parent' },
-      main: { door: role === 'parent' },
+      hall: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
+      kitchen: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
+      bedroom: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
+      bathroom: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
+      main: { door: role === 'parent' || isAdmin },
     },
   };
   return base;
+}
+
+async function ensureSuperAdmin() {
+  if (!superAdminEmail || !superAdminPin) {
+    console.log('[backend] SUPER_ADMIN_EMAIL or PIN not set; skipping bootstrap');
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO users (name, email, role, relation, pin, preferred_login)
+       VALUES (?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE
+         name=VALUES(name),
+         role='admin',
+         relation='superadmin',
+         pin=VALUES(pin),
+         preferred_login='pin'`,
+      [superAdminName || 'Super Admin', superAdminEmail, 'admin', 'superadmin', superAdminPin, 'pin']
+    );
+    console.log('[backend] Super admin ensured for', superAdminEmail);
+  } catch (e) {
+    console.error('[backend] Failed to ensure super admin:', e?.message || e);
+  }
 }
 
 // Register user with face template
@@ -460,4 +487,24 @@ app.get('/api/devices/:deviceId/state', async (req, res) => {
   }
 });
 
-app.listen(port, () => console.log(`[backend] listening on :${port}`));
+app.post('/api/admin/login', async (req, res) => {
+  const { email, pin } = req.body || {};
+  if (!email || !pin) return res.status(400).json({ error: 'email and pin required' });
+  try {
+    const [[row]] = await pool.query(
+      'SELECT id, name, email, role, relation, pin as user_pin FROM users WHERE email=? AND role=? LIMIT 1',
+      [email, 'admin']
+    );
+    if (!row || row.user_pin !== pin) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const user = { id: row.id, name: row.name, email: row.email, role: row.role, relation: row.relation };
+    res.json({ success: true, user });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'admin login failed' });
+  }
+});
+
+ensureSuperAdmin().finally(() => {
+  app.listen(port, () => console.log(`[backend] listening on :${port}`));
+});

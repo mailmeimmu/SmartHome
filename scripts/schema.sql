@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(120) NOT NULL,
   `email` VARCHAR(190) NULL,
-  `role` ENUM('parent','member') NOT NULL DEFAULT 'member',
+  `role` ENUM('admin','parent','member') NOT NULL DEFAULT 'member',
   `relation` VARCHAR(60) NULL,
   `pin` VARCHAR(16) NULL,
   `preferred_login` ENUM('pin','biometric','face') NOT NULL DEFAULT 'pin',
