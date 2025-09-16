@@ -49,16 +49,14 @@ jobs:
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$DEPLOY_PATH\""
 
       - name: Update remote .env (optional)
-        if: ${{ secrets.DEPLOY_ENV_FILE != '' && secrets.DEPLOY_ENV_FILE != null }}
+        if: ${{ secrets.DEPLOY_ENV_FILE != '' }}
         shell: bash
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > \"$DEPLOY_PATH/.env\" <<'EOF'
-${{ secrets.DEPLOY_ENV_FILE }}
-EOF"
+          # Safely pipe the secret content to remote .env
+          printf '%s' "${{ secrets.DEPLOY_ENV_FILE }}" | ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > \"$DEPLOY_PATH/.env\""
 
       - name: Sync backend files
         shell: bash
@@ -79,9 +77,11 @@ EOF"
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          REMOTE_PATH="$DEPLOY_PATH"
+
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -lc "
             set -euo pipefail
-            cd \"$DEPLOY_PATH\"
+            cd \"$REMOTE_PATH\"
 
             # Ensure Node/npm exist
             command -v npm >/dev/null 2>&1 || { echo 'npm not in PATH on remote host'; exit 1; }
@@ -89,7 +89,7 @@ EOF"
             # Install production deps
             npm ci --omit=dev
 
-            # Run migrations if exists
+            # Run migrations if present
             if [ -f scripts/migrate.js ]; then
               node scripts/migrate.js
             fi
