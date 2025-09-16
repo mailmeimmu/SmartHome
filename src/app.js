@@ -6,6 +6,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const app = express();
 const port = Number(process.env.PORT || 8080);
 const sensorSecret = process.env.SENSOR_SHARED_SECRET || process.env.SENSORS_SHARED_SECRET || '';
+const DEFAULT_SENSOR_METRIC = 'power';
 
 app.use(bodyParser.json({ limit: '1mb' }));
 
@@ -260,41 +261,39 @@ function parseRow(row) {
   };
 }
 
+async function insertSensorReading({ deviceId, metric, value, unit, metadata, recordedAt }) {
+  const numericValue = Number(value);
+  const ts = recordedAt instanceof Date ? recordedAt : (recordedAt ? new Date(recordedAt) : new Date());
+  if (Number.isNaN(ts.getTime())) throw new Error('invalid recordedAt');
+  const metaJson = normalizeMetadata(metadata);
+  const [result] = await pool.query(
+    'INSERT INTO sensor_readings (device_id, metric, value, unit, metadata, recorded_at) VALUES (?,?,?,?,?,?)',
+    [deviceId, metric, numericValue, unit || null, metaJson, ts]
+  );
+  return {
+    id: result?.insertId,
+    deviceId,
+    metric,
+    value: numericValue,
+    unit: unit || null,
+    metadata: metadata ?? null,
+    recordedAt: ts.toISOString(),
+  };
+}
+
 // Ingest a sensor reading from a hardware device
 app.post('/api/sensors/:deviceId/readings', async (req, res) => {
   if (!checkSensorSecret(req, res)) return;
   const deviceId = (req.params.deviceId || '').trim();
   const { metric, value, unit, recordedAt, metadata } = req.body || {};
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
-  if (!metric || typeof metric !== 'string') return res.status(400).json({ error: 'metric required' });
+  const finalMetric = typeof metric === 'string' && metric.trim().length ? metric : DEFAULT_SENSOR_METRIC;
   if (value === undefined || value === null || Number.isNaN(Number(value))) return res.status(400).json({ error: 'numeric value required' });
-  let ts = new Date();
-  if (recordedAt) {
-    const parsed = new Date(recordedAt);
-    if (Number.isNaN(parsed.getTime())) return res.status(400).json({ error: 'invalid recordedAt' });
-    ts = parsed;
-  }
-  const numericValue = Number(value);
-  const metaJson = normalizeMetadata(metadata);
   try {
-    const [result] = await pool.query(
-      'INSERT INTO sensor_readings (device_id, metric, value, unit, metadata, recorded_at) VALUES (?,?,?,?,?,?)',
-      [deviceId, metric, numericValue, unit || null, metaJson, ts]
-    );
-    const id = result?.insertId;
-    res.json({
-      success: true,
-      reading: {
-        id,
-        deviceId,
-        metric,
-        value: numericValue,
-        unit: unit || null,
-        metadata: metadata ?? null,
-        recordedAt: ts.toISOString(),
-      },
-    });
+    const reading = await insertSensorReading({ deviceId, metric: finalMetric, value, unit, metadata, recordedAt });
+    res.json({ success: true, reading });
   } catch (e) {
+    if (e.message === 'invalid recordedAt') return res.status(400).json({ error: 'invalid recordedAt' });
     res.status(500).json({ error: e.message || 'sensor ingest failed' });
   }
 });
@@ -363,6 +362,40 @@ app.get('/api/sensors/:deviceId/readings/latest', async (req, res) => {
     res.json({ readings: rows.map(parseRow) });
   } catch (e) {
     res.status(500).json({ error: e.message || 'latest readings failed' });
+  }
+});
+
+// Minimal device state endpoints (value 0/1)
+app.post('/api/devices/:deviceId/state', async (req, res) => {
+  if (!checkSensorSecret(req, res)) return;
+  const deviceId = (req.params.deviceId || '').trim();
+  if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
+  const { value, recordedAt } = req.body || {};
+  if (value === undefined || value === null || Number.isNaN(Number(value))) {
+    return res.status(400).json({ error: 'numeric value required' });
+  }
+  const numericValue = Number(value) ? 1 : 0;
+  try {
+    const reading = await insertSensorReading({ deviceId, metric: DEFAULT_SENSOR_METRIC, value: numericValue, unit: null, metadata: null, recordedAt });
+    res.json({ success: true, deviceId, value: reading.value });
+  } catch (e) {
+    if (e.message === 'invalid recordedAt') return res.status(400).json({ error: 'invalid recordedAt' });
+    res.status(500).json({ error: e.message || 'device state update failed' });
+  }
+});
+
+app.get('/api/devices/:deviceId/state', async (req, res) => {
+  const deviceId = (req.params.deviceId || '').trim();
+  if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
+  try {
+    const [[row]] = await pool.query(
+      'SELECT value FROM sensor_readings WHERE device_id=? AND metric=? ORDER BY recorded_at DESC, id DESC LIMIT 1',
+      [deviceId, DEFAULT_SENSOR_METRIC]
+    );
+    if (!row) return res.status(404).json({ error: 'no state found' });
+    res.json({ deviceId, value: Number(row.value) ? 1 : 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'device state query failed' });
   }
 });
 
