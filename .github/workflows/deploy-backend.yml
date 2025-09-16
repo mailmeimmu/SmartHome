@@ -4,31 +4,48 @@ on:
   push:
     branches: [main]
     paths:
-      - 'server/**'
+      - '**'                        # no leading slash
       - '.github/workflows/deploy-backend.yml'
+
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: webfactory/ssh-agent@v0.9.0
+      - name: Start SSH agent (prints public key once)
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          log-public-key: true
+
+      - name: Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Sync backend files
         run: |
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
-            server/ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/smarthome/server/
+            ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/smarthome/server/
+        # If your SSH port is custom, add: -e "ssh -p 2222"
 
       - name: Install & migrate
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} <<'EOF'
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} <<'EOF'
+            set -euo pipefail
             cd /var/www/smarthome/server
-            npm ci --production
+            # install prod deps
+            npm ci --omit=dev
+            # run migrations
             node scripts/migrate.js
+            # reload process (ensure pm2 is installed system-wide or in PATH)
             pm2 reload smarthome-backend
           EOF
