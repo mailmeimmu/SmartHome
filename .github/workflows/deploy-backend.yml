@@ -20,7 +20,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate required secrets
+        shell: bash
         run: |
+          set -euo pipefail
           test -n "${{ secrets.DEPLOY_SSH_KEY }}" || { echo "Missing DEPLOY_SSH_KEY under *Secrets*"; exit 1; }
           test -n "${{ secrets.DEPLOY_HOST }}" || { echo "Missing DEPLOY_HOST under *Secrets*"; exit 1; }
           test -n "${{ secrets.DEPLOY_USER }}" || { echo "Missing DEPLOY_USER under *Secrets*"; exit 1; }
@@ -32,59 +34,72 @@ jobs:
           log-public-key: true
 
       - name: Add host to known_hosts
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
       # Use a user-owned directory (no sudo)
       - name: Ensure target directory exists
+        shell: bash
         run: |
+          set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "mkdir -p $DEPLOY_PATH"
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$DEPLOY_PATH\""
 
       - name: Update remote .env (optional)
-        if: ${{ secrets.DEPLOY_ENV_FILE != '' }}
+        if: ${{ secrets.DEPLOY_ENV_FILE != '' && secrets.DEPLOY_ENV_FILE != null }}
+        shell: bash
         run: |
+          set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "cat > $DEPLOY_PATH/.env" <<'ENVEOF'
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          # Write the provided env content to the remote .env
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > \"$DEPLOY_PATH/.env\"" <<'ENVEOF'
 ${{ secrets.DEPLOY_ENV_FILE }}
 ENVEOF
 
       - name: Sync backend files
+        shell: bash
         run: |
+          set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:$DEPLOY_PATH/
-        # For a custom SSH port, add:  -e "ssh -p 2222"
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+          # For a custom SSH port, add:  -e "ssh -p 2222"
 
       - name: Install deps, migrate, reload
+        shell: bash
         run: |
+          set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} <<EOF
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -lc "
             set -euo pipefail
-            cd "$DEPLOY_PATH"
+            cd \"$DEPLOY_PATH\"
 
             # Ensure Node/npm exist
-            command -v npm >/dev/null 2>&1 || { echo "npm not in PATH on remote host"; exit 1; }
+            command -v npm >/dev/null 2>&1 || { echo 'npm not in PATH on remote host'; exit 1; }
 
             # Install production deps
             npm ci --omit=dev
 
             # Run migrations
-            node scripts/migrate.js
+            if [ -f scripts/migrate.js ]; then
+              node scripts/migrate.js
+            fi
 
             # Reload or start via pm2 (must be installed for this user)
             if command -v pm2 >/dev/null 2>&1; then
               pm2 reload smarthome-backend || pm2 start ecosystem.config.js --only smarthome-backend || true
               pm2 save || true
             else
-              echo "pm2 not found; install with: npm i -g pm2"; exit 1
+              echo 'pm2 not found; install with: npm i -g pm2'; exit 1
             fi
-          EOF
+          "
