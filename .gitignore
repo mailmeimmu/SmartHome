@@ -1,0 +1,40 @@
+# Backend-specific ignores
+
+# Dependency directories
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+
+# Build & coverage artifacts
+build/
+dist/
+coverage/
+.nyc_output/
+.cache/
+
+# Logs and runtime files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+pids/
+*.pid
+*.seed
+*.log
+nohup.out
+.pm2/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
