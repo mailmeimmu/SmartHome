@@ -1,0 +1,34 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy-backend.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Sync backend files
+        run: |
+          rsync -az --delete \
+            --exclude '.env' \
+            --exclude 'node_modules' \
+            server/ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/smarthome/server/
+
+      - name: Install & migrate
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} <<'EOF'
+            cd /var/www/smarthome/server
+            npm ci --production
+            node scripts/migrate.js
+            pm2 reload smarthome-backend
+          EOF
