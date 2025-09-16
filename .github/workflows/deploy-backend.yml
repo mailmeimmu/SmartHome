@@ -14,14 +14,11 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # If you store secrets under an Environment (e.g., "production"), uncomment:
-    # environment: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Fast fail if any critical secret is missing/misplaced
       - name: Validate required secrets
         run: |
           test -n "${{ secrets.DEPLOY_SSH_KEY }}" || { echo "Missing DEPLOY_SSH_KEY under *Secrets*"; exit 1; }
@@ -32,7 +29,6 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-          # Shows the derived public key once so you can add it to authorized_keys
           log-public-key: true
 
       - name: Add host to known_hosts
@@ -40,11 +36,11 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      # Create target path once and give the deploy user ownership (keeps rsync simple)
-      - name: Ensure target directory exists and is owned by deploy user
+      # Use a user-owned directory (no sudo)
+      - name: Ensure target directory exists
         run: |
           ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            'sudo mkdir -p /var/www/smarthome/server && sudo chown -R "$USER":"$USER" /var/www/smarthome'
+            'mkdir -p ~/apps/smarthome/server'
 
       - name: Sync backend files
         run: |
@@ -52,29 +48,29 @@ jobs:
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/var/www/smarthome/server/
-        # If you use a custom SSH port, add:  -e "ssh -p 2222"
+            ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/apps/smarthome/server/
+        # For a custom SSH port, add:  -e "ssh -p 2222"
 
       - name: Install deps, migrate, reload
         run: |
           ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} <<'EOF'
             set -euo pipefail
-            cd /var/www/smarthome/server
+            cd ~/apps/smarthome/server
+
+            # Ensure Node/npm exist
+            command -v npm >/dev/null 2>&1 || { echo "npm not in PATH on remote host"; exit 1; }
 
             # Install production deps
-            if command -v npm >/dev/null 2>&1; then
-              npm ci --omit=dev
-            else
-              echo "npm not in PATH on remote host"; exit 1
-            fi
+            npm ci --omit=dev
 
             # Run migrations
             node scripts/migrate.js
 
-            # Reload the app (adjust if pm2 needs sudo or full path)
+            # Reload or start via pm2 (must be installed for this user)
             if command -v pm2 >/dev/null 2>&1; then
               pm2 reload smarthome-backend || pm2 start ecosystem.config.js --only smarthome-backend || true
+              pm2 save || true
             else
-              echo "pm2 not found; install or provide absolute path"; exit 1
+              echo "pm2 not found; install with: npm i -g pm2"; exit 1
             fi
           EOF
