@@ -61,6 +61,7 @@ jobs:
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
 
           if [ -n "${DEPLOY_ENV_FILE:-}" ]; then
+            # Safely push .env content
             printf '%s' "${DEPLOY_ENV_FILE}" | ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cat > \"$DEPLOY_PATH/.env\""
             echo "Updated $DEPLOY_PATH/.env on remote."
           else
@@ -82,13 +83,15 @@ jobs:
 
       - name: Install deps, migrate, reload
         shell: bash
+        env:
+          APP_NAME: ${{ secrets.PM2_APP_NAME || 'smarthome-backend' }}
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
           REMOTE_PATH="$DEPLOY_PATH"
 
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -lc "
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -c "
             set -euo pipefail
             cd \"$REMOTE_PATH\"
 
@@ -103,11 +106,22 @@ jobs:
               node scripts/migrate.js
             fi
 
-            # Reload or start via pm2 (must be installed for this user)
-            if command -v pm2 >/dev/null 2>&1; then
-              pm2 reload smarthome-backend || pm2 start ecosystem.config.js --only smarthome-backend || true
-              pm2 save || true
-            else
+            # PM2 handling
+            if ! command -v pm2 >/dev/null 2>&1; then
               echo 'pm2 not found; install with: npm i -g pm2'; exit 1
             fi
+
+            # Prefer ecosystem if available
+            if [ -f ecosystem.config.js ]; then
+              pm2 startOrReload ecosystem.config.js --only \"${APP_NAME}\" || pm2 start ecosystem.config.js --only \"${APP_NAME}\"
+            else
+              # If process exists, reload; otherwise start via npm
+              if pm2 describe \"${APP_NAME}\" >/dev/null 2>&1; then
+                pm2 reload \"${APP_NAME}\"
+              else
+                pm2 start \"npm\" --name \"${APP_NAME}\" -- run start
+              fi
+            fi
+
+            pm2 save || true
           "
