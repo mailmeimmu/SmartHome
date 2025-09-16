@@ -43,6 +43,15 @@ jobs:
           if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
           ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "mkdir -p $DEPLOY_PATH"
 
+      - name: Update remote .env (optional)
+        if: ${{ secrets.DEPLOY_ENV_FILE != '' }}
+        run: |
+          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+          if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "cat > $DEPLOY_PATH/.env" <<'ENVEOF'
+${{ secrets.DEPLOY_ENV_FILE }}
+ENVEOF
+
       - name: Sync backend files
         run: |
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
