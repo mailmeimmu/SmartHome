@@ -70,6 +70,7 @@ jobs:
 
       - name: Sync backend files
         shell: bash
+        working-directory: server
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
@@ -78,7 +79,7 @@ jobs:
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
 
       - name: Install deps, migrate, reload
