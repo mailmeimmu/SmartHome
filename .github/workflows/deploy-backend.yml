@@ -49,14 +49,23 @@ jobs:
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$DEPLOY_PATH\""
 
       - name: Update remote .env (optional)
-        if: ${{ secrets.DEPLOY_ENV_FILE != '' }}
         shell: bash
+        env:
+          DEPLOY_ENV_FILE: ${{ secrets.DEPLOY_ENV_FILE }}
+          DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           set -euo pipefail
-          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+          DEPLOY_PATH="${DEPLOY_PATH_SECRET}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          # Safely pipe the secret content to remote .env
-          printf '%s' "${{ secrets.DEPLOY_ENV_FILE }}" | ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > \"$DEPLOY_PATH/.env\""
+
+          if [ -n "${DEPLOY_ENV_FILE:-}" ]; then
+            printf '%s' "${DEPLOY_ENV_FILE}" | ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cat > \"$DEPLOY_PATH/.env\""
+            echo "Updated $DEPLOY_PATH/.env on remote."
+          else
+            echo "No DEPLOY_ENV_FILE provided; skipping .env update."
+          fi
 
       - name: Sync backend files
         shell: bash
