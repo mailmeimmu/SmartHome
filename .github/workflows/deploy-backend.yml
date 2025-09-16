@@ -78,7 +78,7 @@ jobs:
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+            server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
 
       - name: Install deps, migrate, reload
@@ -119,7 +119,7 @@ jobs:
               if pm2 describe \"${APP_NAME}\" >/dev/null 2>&1; then
                 pm2 reload \"${APP_NAME}\"
               else
-                pm2 start \"npm\" --name \"${APP_NAME}\" -- run start
+                pm2 start src/app.js --name \"${APP_NAME}\"
               fi
             fi
 
