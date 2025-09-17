@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate required secrets
         shell: bash
@@ -40,13 +42,15 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Ensure target directory exists
+      - name: Ensure target directories exist
         shell: bash
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$DEPLOY_PATH\""
+          PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
+          if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$DEPLOY_PATH/server\" \"$PUBLIC_PATH\""
 
       - name: Update remote .env (optional)
         shell: bash
@@ -58,12 +62,11 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOY_PATH="${DEPLOY_PATH_SECRET}"
-          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
 
           if [ -n "${DEPLOY_ENV_FILE:-}" ]; then
-            # Safely push .env content
-            printf '%s' "${DEPLOY_ENV_FILE}" | ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cat > \"$DEPLOY_PATH/.env\""
-            echo "Updated $DEPLOY_PATH/.env on remote."
+            printf '%s' "${DEPLOY_ENV_FILE}" | ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cat > \"$DEPLOY_PATH/server/.env\""
+            echo "Updated $DEPLOY_PATH/server/.env on remote."
           else
             echo "No DEPLOY_ENV_FILE provided; skipping .env update."
           fi
@@ -73,13 +76,23 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+            ./server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/server/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
+
+      - name: Sync admin console (fallback)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
+          if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
+          rsync -az --delete \
+            --exclude '.git' \
+            ./public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
 
       - name: Sync public assets
         shell: bash
@@ -87,10 +100,9 @@ jobs:
           set -euo pipefail
           PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
           if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$PUBLIC_PATH\""
           rsync -az --delete \
             --exclude '.git' \
-            public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
+            ./public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
 
       - name: Install deps, migrate, reload
         shell: bash
@@ -99,39 +111,32 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          REMOTE_PATH="$DEPLOY_PATH"
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
+          REMOTE_PATH="$DEPLOY_PATH/server"
 
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -c "
             set -euo pipefail
             cd \"$REMOTE_PATH\"
 
-            # Ensure Node/npm exist
             command -v npm >/dev/null 2>&1 || { echo 'npm not in PATH on remote host'; exit 1; }
-
-            # Install production deps
             npm ci --omit=dev
 
-            # Run migrations if present
             if [ -f scripts/migrate.js ]; then
               node scripts/migrate.js
             fi
 
-            # PM2 handling
             if ! command -v pm2 >/dev/null 2>&1; then
               echo 'pm2 not found; install with: npm i -g pm2'; exit 1
             fi
 
-            # Prefer ecosystem if available
             if [ -f ecosystem.config.js ]; then
               pm2 startOrReload ecosystem.config.js --only \"${APP_NAME}\" || pm2 start ecosystem.config.js --only \"${APP_NAME}\"
             else
-              # If process exists, reload; otherwise start via npm
               if pm2 describe \"${APP_NAME}\" >/dev/null 2>&1; then
                 pm2 reload \"${APP_NAME}\"
               else
                 pm2 start src/app.js --name \"${APP_NAME}\"
-              fi
+              endif
             fi
 
             pm2 save || true
