@@ -305,7 +305,7 @@
               </select>
             </td>
             <td class="actions">
-              <button data-action="delete" data-id="${user.id}" class="danger" style="border-color: rgba(248,113,113,0.3);">Remove</button>
+              <button data-action="delete" data-id="${user.id}" class="#danger" style="border-color: rgba(248,113,113,0.3);">Remove</button>
             </td>
           </tr>
         `;
@@ -325,10 +325,13 @@
         </table>
       `;
       usersTableWrapper.querySelectorAll('select[data-action="role"]').forEach(sel => {
-        sel.addEventListener('change', (e) => {
+        sel.addEventListener('change', () => {
           const id = sel.getAttribute('data-id');
           const role = sel.value;
-          if (!confirm(`Change role to ${role}?`)) { sel.value = sel.getAttribute('value'); return; }
+          if (!confirm(`Change role to ${role}?`)) {
+            sel.value = sel.getAttribute('value');
+            return;
+          }
           updateRole(id, role);
         });
       });
