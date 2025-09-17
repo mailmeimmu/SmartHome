@@ -42,6 +42,22 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Determine source paths
+        id: paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d server ]; then
+            echo "backend_source=server" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend_source=." >> "$GITHUB_OUTPUT"
+          fi
+          if [ -d public ]; then
+            echo "public_source=public" >> "$GITHUB_OUTPUT"
+          else
+            echo "public_source=." >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Ensure target directories exist
         shell: bash
         run: |
@@ -77,11 +93,13 @@ jobs:
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
+          BACKEND_SOURCE="${{ steps.paths.outputs.backend_source }}"
+          echo "Syncing backend from $BACKEND_SOURCE"
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            ./server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+            "./${BACKEND_SOURCE}/" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
 
       - name: Sync public assets
@@ -90,9 +108,14 @@ jobs:
           set -euo pipefail
           PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
           if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
+          PUBLIC_SOURCE="${{ steps.paths.outputs.public_source }}"
+          if [ "$PUBLIC_SOURCE" = "." ]; then
+            echo "No public directory found; skipping admin console sync.";
+            exit 0;
+          fi
           rsync -az --delete \
             --exclude '.git' \
-            ./public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
+            "./${PUBLIC_SOURCE}/" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
 
       - name: Install deps, migrate, reload
         shell: bash
