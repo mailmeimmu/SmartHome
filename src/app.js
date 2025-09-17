@@ -1,7 +1,9 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const path = require('path');
+const crypto = require('crypto');
 const { pool } = require('./db');
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 const port = Number(process.env.PORT || 8080);
@@ -10,8 +12,14 @@ const DEFAULT_SENSOR_METRIC = 'power';
 const superAdminName = process.env.SUPER_ADMIN_NAME || 'Super Admin';
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || '';
 const superAdminPin = process.env.SUPER_ADMIN_PIN || '';
+const adminSessions = new Map();
+const ADMIN_SESSION_TTL = 1000 * 60 * 60 * 8; // 8 hours
 
 app.use(bodyParser.json({ limit: '1mb' }));
+
+const adminConsolePath = path.join(__dirname, 'public', 'admin');
+app.use('/admin/console', express.static(adminConsolePath));
+app.get('/admin', (_req, res) => res.redirect('/admin/console/'));
 
 function hashString(s) {
   let h = 5381; for (let i = 0; i < s.length; i++) { h = ((h << 5) + h) + s.charCodeAt(i); h |= 0; }
@@ -56,6 +64,31 @@ function defaultPolicies(role) {
     },
   };
   return base;
+}
+
+function createAdminSession(user) {
+  const token = crypto.randomBytes(32).toString('hex');
+  adminSessions.set(token, { id: user.id, email: user.email, name: user.name, created: Date.now() });
+  return token;
+}
+
+function requireAdmin(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token || !adminSessions.has(token)) {
+    return res.status(401).json({ error: 'admin auth required' });
+  }
+  const session = adminSessions.get(token);
+  if (!session) {
+    return res.status(401).json({ error: 'admin auth required' });
+  }
+  if (Date.now() - session.created > ADMIN_SESSION_TTL) {
+    adminSessions.delete(token);
+    return res.status(401).json({ error: 'session expired' });
+  }
+  req.adminSession = session;
+  req.adminToken = token;
+  next();
 }
 
 async function ensureSuperAdmin() {
@@ -500,9 +533,86 @@ app.post('/api/admin/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const user = { id: row.id, name: row.name, email: row.email, role: row.role, relation: row.relation };
-    res.json({ success: true, user });
+    const token = createAdminSession(user);
+    res.json({ success: true, user, token });
   } catch (e) {
     res.status(500).json({ error: e.message || 'admin login failed' });
+  }
+});
+
+app.get('/api/admin/users', requireAdmin, async (_req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT u.*, p.policies FROM users u LEFT JOIN user_policies p ON p.user_id=u.id ORDER BY u.id DESC');
+    const mapped = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      role: r.role,
+      relation: r.relation,
+      registered_at: r.registered_at,
+      policies: r.policies ? JSON.parse(r.policies) : defaultPolicies(r.role),
+    }));
+    res.json({ users: mapped });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'admin users fetch failed' });
+  }
+});
+
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  const { name, email, role = 'member', relation = '', pin = '' } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [ur] = await conn.query(
+      'INSERT INTO users (name, email, role, relation, pin, preferred_login) VALUES (?,?,?,?,?,?)',
+      [name, email || null, role, relation, pin || null, 'pin']
+    );
+    const id = ur.insertId;
+    await conn.query('INSERT INTO user_policies (user_id, policies) VALUES (?,?)', [id, JSON.stringify(defaultPolicies(role))]);
+    await conn.commit();
+    res.json({ success: true, user: { id, name, email, role, relation } });
+  } catch (e) {
+    await conn.rollback();
+    res.status(500).json({ error: e.message || 'admin create user failed' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.patch('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, email, role, relation, pin } = req.body || {};
+  const fields = [];
+  const values = [];
+  if (name !== undefined) { fields.push('name=?'); values.push(name); }
+  if (email !== undefined) { fields.push('email=?'); values.push(email || null); }
+  if (role !== undefined) { fields.push('role=?'); values.push(role); }
+  if (relation !== undefined) { fields.push('relation=?'); values.push(relation); }
+  if (pin !== undefined) { fields.push('pin=?'); values.push(pin || null); }
+  if (!fields.length) return res.json({ success: true });
+  values.push(id);
+  try {
+    await pool.query(`UPDATE users SET ${fields.join(', ')} WHERE id=?`, values);
+    if (role !== undefined) {
+      await pool.query(
+        'INSERT INTO user_policies (user_id, policies) VALUES (?,?) ON DUPLICATE KEY UPDATE policies=VALUES(policies)',
+        [id, JSON.stringify(defaultPolicies(role))]
+      );
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'admin update user failed' });
+  }
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    await pool.query('DELETE FROM users WHERE id=?', [id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'admin delete user failed' });
   }
 });
 

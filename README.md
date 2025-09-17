@@ -42,6 +42,11 @@ All endpoints live under the server base URL (e.g. `http://YOUR_SERVER:8080`). J
 ### Super Admin
 - Set `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, and `SUPER_ADMIN_PIN` in `.env` to bootstrap a super admin account (created or updated on boot).
 - `POST /api/admin/login` – `{ email, pin }` → `{ success, user }`; used by the super admin screen to access user management tools.
+- `GET /api/admin/users` – requires `Authorization: Bearer <token>` from admin login; returns `{ users: [...] }`.
+- `POST /api/admin/users` – create admin/owner/member accounts (`{ name, email?, role, relation?, pin? }`).
+- `PATCH /api/admin/users/:id` – update core profile fields (`name`, `email`, `role`, `relation`, `pin`).
+- `DELETE /api/admin/users/:id` – remove a user (cascades to face templates and policies).
+- Browser console: `http://YOUR_SERVER:8080/admin/console` provides a lightweight UI for the super admin to log in, register owners, change roles, and remove users.
 
 ### Door Control
 - `GET /api/door` – returns door lock states `{ "main": true, ... }` (`true` = locked).
