@@ -50,7 +50,7 @@ jobs:
           PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
           if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$DEPLOY_PATH/server\" \"$PUBLIC_PATH\""
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$DEPLOY_PATH\" \"$PUBLIC_PATH\""
 
       - name: Update remote .env (optional)
         shell: bash
@@ -65,15 +65,14 @@ jobs:
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
 
           if [ -n "${DEPLOY_ENV_FILE:-}" ]; then
-            printf '%s' "${DEPLOY_ENV_FILE}" | ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cat > \"$DEPLOY_PATH/server/.env\""
-            echo "Updated $DEPLOY_PATH/server/.env on remote."
+            printf '%s' "${DEPLOY_ENV_FILE}" | ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "cat > \"$DEPLOY_PATH/.env\""
+            echo "Updated $DEPLOY_PATH/.env on remote."
           else
             echo "No DEPLOY_ENV_FILE provided; skipping .env update."
           fi
 
       - name: Sync backend files
         shell: bash
-        working-directory: server
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
@@ -82,19 +81,18 @@ jobs:
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/server/"
+            ./server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
 
       - name: Sync public assets
         shell: bash
-        working-directory: public
         run: |
           set -euo pipefail
           PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
           if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
           rsync -az --delete \
             --exclude '.git' \
-            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
+            ./public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
 
       - name: Install deps, migrate, reload
         shell: bash
@@ -104,7 +102,7 @@ jobs:
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
-          REMOTE_PATH="$DEPLOY_PATH/server"
+          REMOTE_PATH="$DEPLOY_PATH"
 
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -c "
             set -euo pipefail
