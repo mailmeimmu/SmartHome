@@ -73,6 +73,7 @@ jobs:
 
       - name: Sync backend files
         shell: bash
+        working-directory: server
         run: |
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
@@ -81,28 +82,19 @@ jobs:
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            ./server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/server/"
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/server/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
-
-      - name: Sync admin console (fallback)
-        shell: bash
-        run: |
-          set -euo pipefail
-          PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
-          if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
-          rsync -az --delete \
-            --exclude '.git' \
-            ./public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
 
       - name: Sync public assets
         shell: bash
+        working-directory: public
         run: |
           set -euo pipefail
           PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
           if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
           rsync -az --delete \
             --exclude '.git' \
-            ./public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
 
       - name: Install deps, migrate, reload
         shell: bash
@@ -136,7 +128,7 @@ jobs:
                 pm2 reload \"${APP_NAME}\"
               else
                 pm2 start src/app.js --name \"${APP_NAME}\"
-              endif
+              fi
             fi
 
             pm2 save || true
