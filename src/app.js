@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const crypto = require('crypto');
 const { pool } = require('./db');
+const { getAdminConsolePath } = require('./adminStatic');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
@@ -17,7 +18,7 @@ const ADMIN_SESSION_TTL = 1000 * 60 * 60 * 8; // 8 hours
 
 app.use(bodyParser.json({ limit: '1mb' }));
 
-const adminConsolePath = path.join(__dirname, '..', '..', 'public', 'admin');
+const adminConsolePath = getAdminConsolePath();
 app.use('/admin/console', express.static(adminConsolePath));
 app.get('/admin', (_req, res) => res.redirect('/admin/console/'));
 
