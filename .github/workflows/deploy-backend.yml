@@ -74,17 +74,23 @@ jobs:
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome/server"; fi
-          LOCAL_SOURCE="server"
-          if [ ! -d "$LOCAL_SOURCE" ]; then
-            echo "Directory '$LOCAL_SOURCE' not found; syncing repository root instead."
-            LOCAL_SOURCE="."
-          fi
           rsync -az --delete \
             --exclude '.env' \
             --exclude 'node_modules' \
             --exclude '.git' \
-            "${LOCAL_SOURCE}/" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+            server/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
+
+      - name: Sync public assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_PATH="${{ secrets.PUBLIC_PATH }}"
+          if [ -z "${PUBLIC_PATH:-}" ]; then PUBLIC_PATH="/var/www/SmartHome/public"; fi
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "mkdir -p \"$PUBLIC_PATH\""
+          rsync -az --delete \
+            --exclude '.git' \
+            public/ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${PUBLIC_PATH}/"
 
       - name: Install deps, migrate, reload
         shell: bash
