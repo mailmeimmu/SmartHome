@@ -37,15 +37,15 @@ You can answer general questions and also control of doors and devices. Always e
 If the user is asking a general question, use the 'none' action.
 
 Supported JSON schema (choose one):
-- {"action":"door.lock|door.unlock|door.lock_all|door.unlock_all","door":"main|front|back|garage|bathroom|room1|hall|kitchen|bedroom|*","say":"..."}
-- {"action":"device.set","room":"hall|kitchen|bedroom|bathroom|room1","device":"light|ac|fan","value":"on|off","say":"..."}
+- {"action":"door.lock|door.unlock|door.lock_all|door.unlock_all","door":"mainhall|bedroom1|bedroom2|kitchen|*","say":"..."}
+- {"action":"device.set","room":"mainhall|bedroom1|bedroom2|kitchen","device":"light|ac|fan","value":"on|off","say":"..."}
 - {"action":"none","say":"..."}
 
 Rules:
 - Only output one JSON object on the last line (no code fences, no extra text after it).
 - Do not prefix the JSON with words like json or wrap it in any quotes or fences.
-- For "home light" assume room=hall.
-- For generic lights with no room specified, prefer room=hall.
+- For "home light" or "living room" assume room=mainhall.
+- For generic lights with no room specified, prefer room=mainhall.
 
 User: ${userText}`;
 }
@@ -273,17 +273,15 @@ app.post('/api/assistant', async (req, res) => {
 function defaultPolicies(role) {
   const isAdmin = role === 'admin';
   const hasFull = role === 'parent' || isAdmin;
-  const base = {
+  return {
     controls: { devices: true, doors: true, unlockDoors: hasFull, voice: true, power: true },
     areas: {
-      hall: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
-      kitchen: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
-      bedroom: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
-      bathroom: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
-      main: { door: hasFull || isAdmin },
+      mainhall: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
+      bedroom1: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
+      bedroom2: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
+      kitchen: { light: hasFull || isAdmin, fan: isAdmin, ac: isAdmin, door: hasFull || isAdmin },
     },
   };
-  return base;
 }
 
 function normalizePolicies(role, policies) {
@@ -490,7 +488,7 @@ app.delete('/api/members/:id', async (req, res) => {
 });
 
 // Door state endpoints
-const defaultDoors = ['main','front','back','garage'];
+const defaultDoors = ['mainhall', 'bedroom1', 'bedroom2', 'kitchen'];
 
 async function ensureDoors() {
   const [rows] = await pool.query('SELECT door FROM door_state');
