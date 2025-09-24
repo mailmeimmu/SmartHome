@@ -1,18 +1,16 @@
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+const MYSQL_HOST = '156.67.104.77';
+const MYSQL_PORT = 3306;
+const MYSQL_USER = 'dbadminiot';
+const MYSQL_PASSWORD = 'Dd@123456';
 
 async function main() {
-  const { MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD } = process.env;
-  if (!MYSQL_HOST || !MYSQL_USER) {
-    console.error('Missing MySQL connection env. Copy server/.env.example to server/.env');
-    process.exit(1);
-  }
-  // Connect without database first to create it
   const conn = await mysql.createConnection({
     host: MYSQL_HOST,
-    port: Number(MYSQL_PORT || 3306),
+    port: MYSQL_PORT,
     user: MYSQL_USER,
     password: MYSQL_PASSWORD,
     multipleStatements: true,

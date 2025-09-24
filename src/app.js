@@ -1,38 +1,24 @@
-const fs = require('fs');
 const express = require('express');
 const bodyParser = require('body-parser');
-const path = require('path');
 const crypto = require('crypto');
-const dotenv = require('dotenv');
 const { pool } = require('./db');
 const { getAdminConsolePath } = require('./adminStatic');
-
-const ENV_CANDIDATES = [
-  path.join(__dirname, '..', '.env'),
-  path.join(__dirname, '..', '..', '.env'),
-];
-
-let envLoaded = false;
-for (const candidate of ENV_CANDIDATES) {
-  if (fs.existsSync(candidate)) {
-    dotenv.config({ path: candidate });
-    envLoaded = true;
-    break;
-  }
-}
-
-if (!envLoaded) {
-  dotenv.config();
-}
+ 
+const APP_PORT = 8080;
+const SENSOR_SHARED_SECRET = '';
+const SUPER_ADMIN_NAME = 'Admin User';
+const SUPER_ADMIN_EMAIL = 'admin@example.com';
+const SUPER_ADMIN_PIN = '123456';
+const GEMINI_API_KEY = 'AIzaSyBvo8Sn5aJbELzBqN3UJBNZO9T2vWZOC00';
 
 const app = express();
-const port = Number(process.env.PORT || 8080);
-const sensorSecret = process.env.SENSOR_SHARED_SECRET || process.env.SENSORS_SHARED_SECRET || '';
+const port = APP_PORT;
+const sensorSecret = SENSOR_SHARED_SECRET;
 const DEFAULT_SENSOR_METRIC = 'power';
-const superAdminName = process.env.SUPER_ADMIN_NAME || 'Super Admin';
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || '';
-const superAdminPin = process.env.SUPER_ADMIN_PIN || '';
-const geminiApiKey = process.env.GEMINI_API_KEY || '';
+const superAdminName = SUPER_ADMIN_NAME;
+const superAdminEmail = SUPER_ADMIN_EMAIL;
+const superAdminPin = SUPER_ADMIN_PIN;
+const geminiApiKey = GEMINI_API_KEY;
 const adminSessions = new Map();
 const ADMIN_SESSION_TTL = 1000 * 60 * 60 * 8; // 8 hours
 
