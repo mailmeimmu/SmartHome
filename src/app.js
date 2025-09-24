@@ -32,20 +32,24 @@ const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models
 
 function buildPrompt(userText) {
   return `You are Smart Home By Nafisa Tabasum voice assistant.
-You can answer general questions and also control of doors and devices. Always end your reply with a single JSON command on the last line only.
+Speak naturally and helpfully.
 
-If the user is asking a general question, use the 'none' action.
+Response format (always in this order):
+1. Conversational reply for the user. Do not mention commands or formatting rules.
+2. A single line starting with "COMMAND:" followed by key=value pairs separated by semicolons.
 
-Supported JSON schema (choose one):
-- {"action":"door.lock|door.unlock|door.lock_all|door.unlock_all","door":"mainhall|bedroom1|bedroom2|kitchen|*","say":"..."}
-- {"action":"device.set","room":"mainhall|bedroom1|bedroom2|kitchen","device":"light|ac|fan","value":"on|off","say":"..."}
-- {"action":"none","say":"..."}
+Example: COMMAND: action=device.set; room=mainhall; device=light; value=on
 
-Rules:
-- Only output one JSON object on the last line (no code fences, no extra text after it).
-- Do not prefix the JSON with words like json or wrap it in any quotes or fences.
-- For "home light" or "living room" assume room=mainhall.
-- For generic lights with no room specified, prefer room=mainhall.
+Rules for the COMMAND line:
+- Supported actions: device.set, door.lock, door.unlock, door.lock_all, door.unlock_all, none.
+- Only include keys that matter (action is required; room/device/value/door are optional).
+- Use lowercase for keys and values. Do not wrap values in quotes.
+- If no smart-home action is needed, output exactly: COMMAND: action=none
+- Never output JSON, code fences, or prefixes such as "json".
+- For "home" or "living room" references, treat as room=mainhall.
+- For unspecified lights, prefer room=mainhall.
+
+You may answer any question before the COMMAND line.
 
 User: ${userText}`;
 }
@@ -85,6 +89,30 @@ function findJsonCommandBlock(text = '') {
   return found;
 }
 
+function parseCommandLine(line = '') {
+  const match = line.trim().match(/^COMMAND:\s*(.*)$/i);
+  if (!match) return null;
+  const body = match[1];
+  if (!body) return null;
+  const pairs = body
+    .split(/;+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (!pairs.length) return null;
+  const result = {};
+  for (const pair of pairs) {
+    const [rawKey, ...rest] = pair.split('=');
+    if (!rawKey || !rest.length) continue;
+    const key = rawKey.trim().toLowerCase();
+    const rawValue = rest.join('=').trim();
+    if (!rawValue) continue;
+    result[key] = key === 'say' ? rawValue.trim() : rawValue.trim().toLowerCase();
+  }
+  if (!Object.keys(result).length) return null;
+  if (!result.action) result.action = 'none';
+  return result;
+}
+
 function stripCommandArtifacts(text = '') {
   const lines = text.split('\n');
   while (lines.length) {
@@ -95,6 +123,10 @@ function stripCommandArtifacts(text = '') {
     }
     const trimmed = lastRaw.trim();
     if (!trimmed) {
+      lines.pop();
+      continue;
+    }
+    if (/^COMMAND:/i.test(trimmed)) {
       lines.pop();
       continue;
     }
@@ -123,14 +155,27 @@ function extractAssistantCommand(partText = '') {
   let payload = null;
   let remainder = trimmed;
 
-  const block = findJsonCommandBlock(trimmed);
-  if (block) {
-    const candidate = sanitizeJsonCandidate(block.json);
-    try {
-      payload = JSON.parse(candidate);
-      remainder = (trimmed.slice(0, block.start) + trimmed.slice(block.end)).trim();
-    } catch (error) {
-      payload = null;
+  const lines = trimmed.split('\n');
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const parsed = parseCommandLine(lines[i]);
+    if (parsed) {
+      payload = parsed;
+      lines.splice(i, 1);
+      remainder = lines.join('\n').trim();
+      break;
+    }
+  }
+
+  if (!payload) {
+    const block = findJsonCommandBlock(trimmed);
+    if (block) {
+      const candidate = sanitizeJsonCandidate(block.json);
+      try {
+        payload = JSON.parse(candidate);
+        remainder = (trimmed.slice(0, block.start) + trimmed.slice(block.end)).trim();
+      } catch (error) {
+        payload = null;
+      }
     }
   }
 
@@ -202,9 +247,11 @@ async function fetchGeminiReply(userText, history = []) {
 
   const { payload, remainder } = extractAssistantCommand(partText);
 
-  const sayText = (payload && typeof payload.say === 'string' && payload.say.trim())
-    ? payload.say.trim()
-    : remainder || partText.trim();
+  const primarySay = remainder ? remainder.trim() : '';
+  const secondarySay = payload && typeof payload.say === 'string' ? payload.say.trim() : '';
+  const rawFallback = partText.trim();
+  const fallbackSay = /^COMMAND:/i.test(rawFallback) ? '' : rawFallback;
+  const sayText = primarySay || secondarySay || fallbackSay || 'Okay.';
 
   const action = payload && typeof payload.action === 'string' ? payload.action.trim() : 'none';
 
@@ -270,16 +317,15 @@ app.post('/api/assistant', async (req, res) => {
   }
 });
 
-function defaultPolicies(role) {
-  const isAdmin = role === 'admin';
-  const hasFull = role === 'parent' || isAdmin;
+function defaultPolicies(_role) {
+  const areaPermissions = { light: true, fan: true, ac: true, door: true };
   return {
-    controls: { devices: true, doors: true, unlockDoors: hasFull, voice: true, power: true },
+    controls: { devices: true, doors: true, unlockDoors: true, voice: true, power: true },
     areas: {
-      mainhall: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
-      bedroom1: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
-      bedroom2: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
-      kitchen: { light: hasFull || isAdmin, fan: isAdmin, ac: isAdmin, door: hasFull || isAdmin },
+      mainhall: { ...areaPermissions },
+      bedroom1: { ...areaPermissions },
+      bedroom2: { ...areaPermissions },
+      kitchen: { ...areaPermissions },
     },
   };
 }
