@@ -272,17 +272,39 @@ app.post('/api/assistant', async (req, res) => {
 
 function defaultPolicies(role) {
   const isAdmin = role === 'admin';
+  const hasFull = role === 'parent' || isAdmin;
   const base = {
-    controls: { devices: true, doors: true, unlockDoors: role === 'parent' || isAdmin, voice: true, power: true },
+    controls: { devices: true, doors: true, unlockDoors: hasFull, voice: true, power: true },
     areas: {
-      hall: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
-      kitchen: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
-      bedroom: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
-      bathroom: { light: role === 'parent' || isAdmin, ac: role === 'parent' || isAdmin, door: role === 'parent' || isAdmin },
-      main: { door: role === 'parent' || isAdmin },
+      hall: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
+      kitchen: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
+      bedroom: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
+      bathroom: { light: hasFull || isAdmin, fan: hasFull || isAdmin, ac: hasFull || isAdmin, door: hasFull || isAdmin },
+      main: { door: hasFull || isAdmin },
     },
   };
   return base;
+}
+
+function normalizePolicies(role, policies) {
+  const defaults = defaultPolicies(role);
+  if (!policies) return defaults;
+  const normalized = {
+    controls: { ...defaults.controls, ...(policies.controls || {}) },
+    areas: {},
+  };
+  const defaultAreas = defaults.areas || {};
+  const providedAreas = policies.areas || {};
+  const areaKeys = new Set([...Object.keys(defaultAreas), ...Object.keys(providedAreas)]);
+  areaKeys.forEach((key) => {
+    const base = defaultAreas[key] || {};
+    const provided = providedAreas[key] || {};
+    normalized.areas[key] = { ...base, ...provided };
+    if (base.fan !== undefined && normalized.areas[key].fan === undefined) {
+      normalized.areas[key].fan = base.fan;
+    }
+  });
+  return normalized;
 }
 
 function createAdminSession(user) {
@@ -398,7 +420,7 @@ app.post('/api/auth/pin', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT u.*, p.policies FROM users u LEFT JOIN user_policies p ON p.user_id=u.id ORDER BY u.id DESC');
-    const mapped = rows.map(r => ({ id: r.id, name: r.name, email: r.email, role: r.role, relation: r.relation, registered_at: r.registered_at, policies: r.policies ? JSON.parse(r.policies) : defaultPolicies(r.role) }));
+  const mapped = rows.map(r => ({ id: r.id, name: r.name, email: r.email, role: r.role, relation: r.relation, registered_at: r.registered_at, policies: normalizePolicies(r.role, r.policies ? JSON.parse(r.policies) : null) }));
     res.json(mapped);
   } catch (e) {
     res.status(500).json({ error: e.message || 'query failed' });
@@ -769,7 +791,7 @@ app.get('/api/admin/users', requireAdmin, async (_req, res) => {
       role: r.role,
       relation: r.relation,
       registered_at: r.registered_at,
-      policies: r.policies ? JSON.parse(r.policies) : defaultPolicies(r.role),
+      policies: normalizePolicies(r.role, r.policies ? JSON.parse(r.policies) : null),
     }));
     res.json({ users: mapped });
   } catch (e) {
