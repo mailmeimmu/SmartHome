@@ -46,8 +46,8 @@ Rules for the COMMAND line:
 - Use lowercase for keys and values. Do not wrap values in quotes.
 - If no smart-home action is needed, output exactly: COMMAND: action=none
 - Never output JSON, code fences, or prefixes such as "json".
+- Interpret the user's phrasing before deciding the command. When the user says things like "all lights", "everything", or mentions the whole house, set room=all so every room with that device type is affected. Otherwise assume the closest matching room (default to room=mainhall when no room is implied).
 - For "home" or "living room" references, treat as room=mainhall.
-- For unspecified lights, prefer room=mainhall.
 
 You may answer any question before the COMMAND line.
 
