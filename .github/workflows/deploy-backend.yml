@@ -82,6 +82,23 @@ jobs:
             ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           # For a custom SSH port, add:  -e "ssh -p 2222"
 
+      - name: Publish server .env from repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+          if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -c "
+            set -euo pipefail
+            SRC=\"$DEPLOY_PATH/server/.env.example\"
+            DEST=\"$DEPLOY_PATH/server/.env\"
+            if [ ! -f \"$SRC\" ]; then
+              echo 'Missing server/.env.example on remote.' >&2
+              exit 1
+            fi
+            cp \"$SRC\" \"$DEST\"
+          "
+
       - name: Install deps, migrate, reload
         shell: bash
         env:
