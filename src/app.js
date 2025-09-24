@@ -1,10 +1,29 @@
+const fs = require('fs');
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
 const crypto = require('crypto');
+const dotenv = require('dotenv');
 const { pool } = require('./db');
 const { getAdminConsolePath } = require('./adminStatic');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+const ENV_CANDIDATES = [
+  path.join(__dirname, '..', '.env'),
+  path.join(__dirname, '..', '..', '.env'),
+];
+
+let envLoaded = false;
+for (const candidate of ENV_CANDIDATES) {
+  if (fs.existsSync(candidate)) {
+    dotenv.config({ path: candidate });
+    envLoaded = true;
+    break;
+  }
+}
+
+if (!envLoaded) {
+  dotenv.config();
+}
 
 const app = express();
 const port = Number(process.env.PORT || 8080);
