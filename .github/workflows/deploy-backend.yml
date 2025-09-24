@@ -88,16 +88,17 @@ jobs:
           set -euo pipefail
           DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
           if [ -z "${DEPLOY_PATH:-}" ]; then DEPLOY_PATH="/var/www/SmartHome"; fi
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -c "
-            set -euo pipefail
-            SRC=\"$DEPLOY_PATH/.env.example\"
-            DEST=\"$DEPLOY_PATH/.env\"
-            if [ ! -f \"$SRC\" ]; then
-              echo 'Missing .env.example on remote.' >&2
-              exit 1
-            fi
-            cp \"$SRC\" \"$DEST\"
-          "
+
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "DEPLOY_PATH='$DEPLOY_PATH' bash -s" <<'EOF'
+          set -euo pipefail
+          SRC="$DEPLOY_PATH/.env.example"
+          DEST="$DEPLOY_PATH/.env"
+          if [ ! -f "$SRC" ]; then
+            echo "Missing .env.example on remote." >&2
+            exit 1
+          fi
+          cp "$SRC" "$DEST"
+          EOF
 
       - name: Install deps, migrate, reload
         shell: bash
