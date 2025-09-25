@@ -153,6 +153,15 @@ function stripCommandArtifacts(text = '') {
   return lines.join('\n').trim();
 }
 
+function cleanAssistantSpeech(text = '') {
+  if (!text) return '';
+  const parts = text
+    .split('\n')
+    .map((line) => line.replace(/^Line\s*\d+\s*:\s*/i, '').trim())
+    .filter(Boolean);
+  return parts.join(' ').trim();
+}
+
 function extractAssistantCommand(partText = '') {
   const trimmed = partText.trim();
   if (!trimmed) return { payload: null, remainder: '' };
@@ -256,7 +265,7 @@ async function fetchGeminiReply(userText, history = []) {
   const secondarySay = payload && typeof payload.say === 'string' ? payload.say.trim() : '';
   const rawFallback = partText.trim();
   const fallbackSay = /^COMMAND:/i.test(rawFallback) ? '' : rawFallback;
-  const sayText = primarySay || secondarySay || fallbackSay || 'Okay.';
+  const sayText = cleanAssistantSpeech(primarySay || secondarySay || fallbackSay || 'Okay.');
 
   const action = payload && typeof payload.action === 'string' ? payload.action.trim() : 'none';
 
@@ -318,7 +327,7 @@ app.post('/api/assistant', async (req, res) => {
     });
   } catch (error) {
     const message = error?.message || 'assistant request failed';
-    res.status(502).json({ error: message });
+    res.status(502).json({ error: cleanAssistantSpeech(message) });
   }
 });
 
