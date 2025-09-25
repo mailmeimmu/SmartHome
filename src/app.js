@@ -9,7 +9,7 @@ const SENSOR_SHARED_SECRET = '';
 const SUPER_ADMIN_NAME = 'Admin User';
 const SUPER_ADMIN_EMAIL = 'admin@example.com';
 const SUPER_ADMIN_PIN = '123456';
-const GEMINI_API_KEY = 'AIzaSyBvo8Sn5aJbELzBqN3UJBNZO9T2vWZOC00';
+const GEMINI_API_KEY = 'AIzaSyAcLNrhvMSahZk7BKr-rL2cMZAUm545_X4';
 
 const app = express();
 const port = APP_PORT;
