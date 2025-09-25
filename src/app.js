@@ -158,6 +158,7 @@ function cleanAssistantSpeech(text = '') {
   const parts = text
     .split('\n')
     .map((line) => line.replace(/^Line\s*\d+\s*:\s*/i, '').trim())
+    .filter((line) => line && !/^COMMAND:/i.test(line))
     .filter(Boolean);
   return parts.join(' ').trim();
 }
