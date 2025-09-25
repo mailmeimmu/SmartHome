@@ -13,6 +13,7 @@ const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@example.com';
 const SUPER_ADMIN_PIN = process.env.SUPER_ADMIN_PIN || '123456';
 const GEMINI_API_KEY = 'AIzaSyBRh6UuOX94G9u5or5o1lBb-r-QP96Q3kw';
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest').trim();
+const GEMINI_API_VERSION = (process.env.GEMINI_API_VERSION || 'v1').trim();
 
 const app = express();
 const port = APP_PORT;
@@ -31,7 +32,7 @@ const adminConsolePath = getAdminConsolePath();
 app.use('/admin/console', express.static(adminConsolePath));
 app.get('/admin', (_req, res) => res.redirect('/admin/console/'));
 
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL || 'gemini-1.5-pro-latest'}:generateContent`;
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION || 'v1'}/models/${GEMINI_MODEL || 'gemini-1.5-pro-latest'}:generateContent`;
 
 function buildPrompt(userText) {
   return `You are Smart Home By Nafisa Tabasum voice assistant.
