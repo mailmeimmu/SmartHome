@@ -1,14 +1,16 @@
+require('dotenv').config();
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const { pool } = require('./db');
 const { getAdminConsolePath } = require('./adminStatic');
- 
-const APP_PORT = 8080;
-const SENSOR_SHARED_SECRET = '';
-const SUPER_ADMIN_NAME = 'Admin User';
-const SUPER_ADMIN_EMAIL = 'admin@example.com';
-const SUPER_ADMIN_PIN = '123456';
+
+const APP_PORT = Number(process.env.PORT) || 8080;
+const SENSOR_SHARED_SECRET = process.env.SENSOR_SHARED_SECRET || '';
+const SUPER_ADMIN_NAME = process.env.SUPER_ADMIN_NAME || 'Admin User';
+const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@example.com';
+const SUPER_ADMIN_PIN = process.env.SUPER_ADMIN_PIN || '123456';
 const GEMINI_API_KEY = 'AIzaSyAcLNrhvMSahZk7BKr-rL2cMZAUm545_X4';
 
 const app = express();
