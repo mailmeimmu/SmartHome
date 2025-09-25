@@ -12,7 +12,7 @@ Express + MySQL service that powers the Expo app: face/PIN auth, member policies
    cd server
    cp .env.example .env
    # edit .env with MySQL credentials plus optional SENSOR_SHARED_SECRET/SUPER_ADMIN vars
-   # set GEMINI_API_KEY (and optional GEMINI_MODEL / GEMINI_API_VERSION, default gemini-1.5-pro-latest on v1) for the assistant proxy
+   # set GEMINI_API_KEY (and optional GEMINI_MODEL / GEMINI_API_VERSION, default models/gemini-1.5-flash-8b on v1) for the assistant proxy
    ```
 2. **Install dependencies & create tables**
    ```bash
