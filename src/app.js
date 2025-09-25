@@ -11,7 +11,7 @@ const SENSOR_SHARED_SECRET = process.env.SENSOR_SHARED_SECRET || '';
 const SUPER_ADMIN_NAME = process.env.SUPER_ADMIN_NAME || 'Admin User';
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@example.com';
 const SUPER_ADMIN_PIN = process.env.SUPER_ADMIN_PIN || '123456';
-const GEMINI_API_KEY = 'AIzaSyAcLNrhvMSahZk7BKr-rL2cMZAUm545_X4';
+const GEMINI_API_KEY = 'AIzaSyBRh6UuOX94G9u5or5o1lBb-r-QP96Q3kw';
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest').trim();
 
 const app = express();
