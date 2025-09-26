@@ -14,7 +14,7 @@ const SUPER_ADMIN_PIN = process.env.SUPER_ADMIN_PIN || '123456';
 const GEMINI_API_KEY = 'AIzaSyAWV0d1xPlioUU-brtp6u5dQEEE9pJWzFk';
 const RAW_GEMINI_MODEL = 'models/gemini-1.5-flash-8b';
 const GEMINI_MODEL = RAW_GEMINI_MODEL;
-const GEMINI_API_VERSION = 'v1';
+const GEMINI_API_VERSION = 'v1beta';
 
 const app = express();
 const port = APP_PORT;
