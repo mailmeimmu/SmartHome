@@ -11,10 +11,10 @@ const SENSOR_SHARED_SECRET = process.env.SENSOR_SHARED_SECRET || '';
 const SUPER_ADMIN_NAME = process.env.SUPER_ADMIN_NAME || 'Admin User';
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'admin@example.com';
 const SUPER_ADMIN_PIN = process.env.SUPER_ADMIN_PIN || '123456';
-const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
-const RAW_GEMINI_MODEL = (process.env.GEMINI_MODEL || 'models/gemini-1.5-flash-8b').trim();
-const GEMINI_MODEL = RAW_GEMINI_MODEL.startsWith('models/') ? RAW_GEMINI_MODEL : `models/${RAW_GEMINI_MODEL}`;
-const GEMINI_API_VERSION = (process.env.GEMINI_API_VERSION || 'v1').trim();
+const GEMINI_API_KEY = 'AIzaSyBRh6UuOX94G9u5or5o1lBb-r-QP96Q3kw';
+const RAW_GEMINI_MODEL = 'models/gemini-1.5-flash-8b';
+const GEMINI_MODEL = RAW_GEMINI_MODEL;
+const GEMINI_API_VERSION = 'v1';
 
 const app = express();
 const port = APP_PORT;
@@ -24,9 +24,6 @@ const superAdminName = SUPER_ADMIN_NAME;
 const superAdminEmail = SUPER_ADMIN_EMAIL;
 const superAdminPin = SUPER_ADMIN_PIN;
 const geminiApiKey = GEMINI_API_KEY;
-if (!geminiApiKey) {
-  console.warn('[Assistant] GEMINI_API_KEY is not set; /api/assistant will return a friendly error.');
-}
 const adminSessions = new Map();
 const ADMIN_SESSION_TTL = 1000 * 60 * 60 * 8; // 8 hours
 
