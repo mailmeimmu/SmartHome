@@ -14,6 +14,7 @@ const SUPER_ADMIN_PIN = process.env.SUPER_ADMIN_PIN || '123456';
 const GEMINI_API_KEY = 'AIzaSyAWV0d1xPlioUU-brtp6u5dQEEE9pJWzFk';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-1.5-flash-latest';
 const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || 'v1beta';
+const FACE_MATCH_THRESHOLD = Number(process.env.FACE_MATCH_THRESHOLD || '0.18');
 
 const app = express();
 const port = APP_PORT;
@@ -302,7 +303,7 @@ function matchTemplates(a, b) {
     if (va && vb && va.length === vb.length && va.length > 0) {
       let sum = 0; for (let i = 0; i < va.length; i++) { const d = (va[i] - vb[i]); sum += d*d; }
       const dist = Math.sqrt(sum / va.length);
-      return dist < 0.12;
+      return dist < FACE_MATCH_THRESHOLD;
     }
     return false;
   } catch {
@@ -417,25 +418,51 @@ async function ensureSuperAdmin() {
 
 // Register user with face template
 app.post('/api/register', async (req, res) => {
-  const { name, email, role = 'member', relation = '', pin = '', preferred_login = 'pin', template, faceId } = req.body || {};
+  const { name, email, role = 'member', relation = '', pin = '', preferred_login = 'face', template, faceId, userId: providedUserId } = req.body || {};
   if (!name || !template) return res.status(400).json({ error: 'name and template required' });
+
+  const loginPreference = preferred_login === 'pin' ? 'pin' : 'face';
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    // Duplicate face check
-    const [ftRows] = await conn.query('SELECT ft.*, u.name as user_name FROM face_templates ft JOIN users u ON u.id=ft.user_id');
+
+    let targetUserId = Number(providedUserId) || null;
+    if (!targetUserId && email) {
+      const [[existing]] = await conn.query('SELECT id FROM users WHERE email=? LIMIT 1', [email]);
+      if (existing) targetUserId = existing.id;
+    }
+
+    const [ftRows] = await conn.query('SELECT ft.*, u.name as user_name, ft.user_id FROM face_templates ft JOIN users u ON u.id=ft.user_id');
     for (const r of ftRows) {
-      if (matchTemplates(template, r.template)) {
+      if (matchTemplates(template, r.template) && (!targetUserId || targetUserId !== r.user_id)) {
         await conn.rollback();
         return res.status(409).json({ error: 'Face already registered', user: { id: r.user_id, name: r.user_name, faceId: r.face_id } });
       }
     }
-    // Insert user
-    const [ur] = await conn.query('INSERT INTO users (name, email, role, relation, pin, preferred_login) VALUES (?,?,?,?,?,?)', [name, email || null, role, relation, pin || null, preferred_login]);
-    const userId = ur.insertId;
-    // Insert template
+
+    let userId = targetUserId;
+    if (!userId) {
+      const [ur] = await conn.query(
+        'INSERT INTO users (name, email, role, relation, pin, preferred_login) VALUES (?,?,?,?,?,?)',
+        [name, email || null, role, relation, pin || null, loginPreference]
+      );
+      userId = ur.insertId;
+    } else {
+      const fields = ['name=?', 'role=?', 'relation=?', 'preferred_login=?'];
+      const values = [name, role, relation, loginPreference];
+      if (email !== undefined) { fields.push('email=?'); values.push(email || null); }
+      if (pin !== undefined) { fields.push('pin=?'); values.push(pin || null); }
+      values.push(userId);
+      await conn.query(`UPDATE users SET ${fields.join(', ')} WHERE id=?`, values);
+      await conn.query('DELETE FROM face_templates WHERE user_id=?', [userId]);
+    }
+
     const storedFaceId = faceId || hashString(template).slice(0, 16);
-    await conn.query('INSERT INTO face_templates (user_id, face_id, template) VALUES (?,?,?)', [userId, storedFaceId, template]);
+    await conn.query(
+      'INSERT INTO face_templates (user_id, face_id, template) VALUES (?,?,?) ON DUPLICATE KEY UPDATE template=VALUES(template), face_id=VALUES(face_id)',
+      [userId, storedFaceId, template]
+    );
+
     await conn.commit();
     res.json({ success: true, user: { id: userId, name, email, role, relation, faceId: storedFaceId } });
   } catch (e) {
@@ -479,8 +506,17 @@ app.post('/api/auth/pin', async (req, res) => {
 // List users with policies
 app.get('/api/users', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT u.*, p.policies FROM users u LEFT JOIN user_policies p ON p.user_id=u.id ORDER BY u.id DESC');
-  const mapped = rows.map(r => ({ id: r.id, name: r.name, email: r.email, role: r.role, relation: r.relation, registered_at: r.registered_at, policies: normalizePolicies(r.role, r.policies ? JSON.parse(r.policies) : null) }));
+    const [rows] = await pool.query('SELECT u.*, p.policies, ft.face_id FROM users u LEFT JOIN user_policies p ON p.user_id=u.id LEFT JOIN face_templates ft ON ft.user_id=u.id ORDER BY u.id DESC');
+    const mapped = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      role: r.role,
+      relation: r.relation,
+      registered_at: r.registered_at,
+      faceId: r.face_id || null,
+      policies: normalizePolicies(r.role, r.policies ? JSON.parse(r.policies) : null),
+    }));
     res.json(mapped);
   } catch (e) {
     res.status(500).json({ error: e.message || 'query failed' });
@@ -843,7 +879,7 @@ app.post('/api/admin/login', async (req, res) => {
 
 app.get('/api/admin/users', requireAdmin, async (_req, res) => {
   try {
-    const [rows] = await pool.query('SELECT u.*, p.policies FROM users u LEFT JOIN user_policies p ON p.user_id=u.id ORDER BY u.id DESC');
+    const [rows] = await pool.query('SELECT u.*, p.policies, ft.face_id FROM users u LEFT JOIN user_policies p ON p.user_id=u.id LEFT JOIN face_templates ft ON ft.user_id=u.id ORDER BY u.id DESC');
     const mapped = rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -851,6 +887,7 @@ app.get('/api/admin/users', requireAdmin, async (_req, res) => {
       role: r.role,
       relation: r.relation,
       registered_at: r.registered_at,
+      faceId: r.face_id || null,
       policies: normalizePolicies(r.role, r.policies ? JSON.parse(r.policies) : null),
     }));
     res.json({ users: mapped });
@@ -914,6 +951,55 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message || 'admin delete user failed' });
+  }
+});
+
+app.put('/api/admin/users/:id/face', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { template, faceId } = req.body || {};
+  if (!template) return res.status(400).json({ error: 'template required' });
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[user]] = await conn.query('SELECT id, name FROM users WHERE id=? LIMIT 1', [id]);
+    if (!user) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'user not found' });
+    }
+
+    const [ftRows] = await conn.query('SELECT ft.*, u.name as user_name FROM face_templates ft JOIN users u ON u.id=ft.user_id WHERE ft.user_id<>?', [id]);
+    for (const r of ftRows) {
+      if (matchTemplates(template, r.template)) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'Face already registered', user: { id: r.user_id, name: r.user_name, faceId: r.face_id } });
+      }
+    }
+
+    await conn.query('DELETE FROM face_templates WHERE user_id=?', [id]);
+    const storedFaceId = faceId || hashString(template).slice(0, 16);
+    await conn.query(
+      'INSERT INTO face_templates (user_id, face_id, template) VALUES (?,?,?) ON DUPLICATE KEY UPDATE template=VALUES(template), face_id=VALUES(face_id)',
+      [id, storedFaceId, template]
+    );
+    await conn.commit();
+    res.json({ success: true, faceId: storedFaceId });
+  } catch (e) {
+    await conn.rollback();
+    res.status(500).json({ error: e.message || 'admin face update failed' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.delete('/api/admin/users/:id/face', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const [result] = await pool.query('DELETE FROM face_templates WHERE user_id=?', [id]);
+    const success = result?.affectedRows > 0;
+    res.json({ success });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'admin face reset failed' });
   }
 });
 
